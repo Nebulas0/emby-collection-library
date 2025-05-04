@@ -43,6 +43,21 @@ def get_collection_items(collection_id):
     
     return response.json().get("Items", [])
 
+# Function to fetch the detailed metadata for an item using its ID
+def get_item_details(item_id):
+    """
+    Fetch detailed information about an item, including its Path.
+    """
+    response = requests.get(
+        f"{EMBY_URL}/emby/Items/{item_id}",
+        params={"api_key": API_KEY},
+    )
+    if response.status_code != 200:
+        logger.error(f"Error fetching details for item {item_id}: {response.status_code} - {response.text}")
+        return None
+
+    return response.json()
+
 # Function to create symlinks for collection items
 def create_symlinks(items, library_path, item_type):
     """
@@ -53,12 +68,12 @@ def create_symlinks(items, library_path, item_type):
     new_symlinks = set()
 
     for item in items:
-        source_path = item.get("Path")
-        if not source_path:
+        item_details = get_item_details(item["Id"])
+        if not item_details or "Path" not in item_details:
             logger.warning(f"Skipping {item_type} '{item['Name']}' as it has no valid path in Emby.")
             continue
 
-        source_path = source_path.replace(MEDIA_LIBRARY_PATH, "/opt/emby-collection-to-library/library")
+        source_path = item_details["Path"]
         if not os.path.exists(source_path):
             logger.warning(f"Source path does not exist for {item_type} '{item['Name']}': {source_path}")
             continue
