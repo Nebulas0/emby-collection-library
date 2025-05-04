@@ -28,6 +28,20 @@ MEDIA_LIBRARY_PATH = f"{BASE_PATH}/library"
 SYMLINK_LIBRARY_PATH_MOVIES = f"{BASE_PATH}/output/movies"
 SYMLINK_LIBRARY_PATH_TV_SHOWS = f"{BASE_PATH}/output/tvshows"
 
+# Path mapping table
+PATH_MAPPING = {
+    "/mnt/unionfs": "/mnt/unionfs"  # Ensure local and Emby paths match
+}
+
+def map_emby_path(emby_path):
+    """
+    Map Emby's path to the local system path using the PATH_MAPPING table.
+    """
+    for emby_base, local_base in PATH_MAPPING.items():
+        if emby_path.startswith(emby_base):
+            return emby_path.replace(emby_base, local_base, 1)
+    return emby_path  # Return the original path if no mapping is found
+
 # Function to fetch items in a collection using Collection_ID
 def get_collection_items(collection_id):
     """
@@ -78,6 +92,11 @@ def create_symlinks(items, library_path, item_type):
         if not source_path:
             logger.warning(f"Skipping {item_type} '{item['Name']}' as it has no valid playback path in Emby.")
             continue
+
+        # Map the Emby path to the local system path
+        logger.debug(f"Original Emby path: {source_path}")
+        source_path = map_emby_path(source_path)
+        logger.debug(f"Mapped local path: {source_path}")
 
         if not os.path.exists(source_path):
             logger.warning(f"Source path does not exist for {item_type} '{item['Name']}': {source_path}")
