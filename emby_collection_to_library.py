@@ -7,9 +7,13 @@ from pathlib import Path
 EMBY_URL = "http://your-emby-server-address"  # Replace with your Emby server address
 API_KEY = "your-api-key"  # Replace with your Emby API key
 
-# Collection and library configuration
-COLLECTION_NAME = "trending"  # Name of the collection to process
-SYMLINK_LIBRARY_PATH = "/output/library"  # Path where symlinks will be created
+# Collection names
+MOVIE_COLLECTION_NAME = "trending_movies"  # Name of the collection for Movies
+TV_COLLECTION_NAME = "trending_tvshows"  # Name of the collection for TV Shows
+
+# Output paths for symlinks
+SYMLINK_LIBRARY_PATH_MOVIES = "/output/library/movies"  # Path where symlinks for Movies will be created
+SYMLINK_LIBRARY_PATH_TV_SHOWS = "/output/library/tvshows"  # Path where symlinks for TV Shows will be created
 
 # Emby library base path inside the container (mapped via Docker volume)
 EMBY_LIBRARY_PATH = "/emby/library"  # Path to the Emby library inside the container
@@ -30,8 +34,8 @@ def get_collection_id(collection_name):
             return collection["Id"]
     raise ValueError(f"Collection '{collection_name}' not found")
 
-# Function to get movies/items in the collection
-def get_collection_movies(collection_id):
+# Function to get items in the collection
+def get_collection_items(collection_id):
     """
     Fetch all items in the specified collection.
     """
@@ -42,31 +46,31 @@ def get_collection_movies(collection_id):
     response.raise_for_status()
     return response.json().get("Items", [])
 
-# Function to create symlinks for the movies/items
-def create_symlinks(movies, library_path):
+# Function to create symlinks for Movies or TV Shows
+def create_symlinks(items, library_path, item_type):
     """
-    Create symbolic links for all movies/items in the collection.
+    Create symbolic links for all items in the collection.
     Removes outdated symlinks and creates new ones as needed.
     """
     os.makedirs(library_path, exist_ok=True)  # Ensure library directory exists
     existing_symlinks = set(Path(library_path).iterdir())  # Track existing symlinks
     new_symlinks = set()
 
-    for movie in movies:
-        # Get the source path of the movie from the Emby library
-        source_path = movie.get("Path")
+    for item in items:
+        # Get the source path of the item from the Emby library
+        source_path = item.get("Path")
         if not source_path:
-            print(f"Skipping movie '{movie['Name']}' as it has no valid path in Emby")
+            print(f"Skipping {item_type} '{item['Name']}' as it has no valid path in Emby")
             continue
 
         # Adjust the source path based on Docker volume mapping
         source_path = source_path.replace(EMBY_LIBRARY_PATH, "/emby/library")
         if not os.path.exists(source_path):
-            print(f"Warning: Source path does not exist for '{movie['Name']}': {source_path}")
+            print(f"Warning: Source path does not exist for {item_type} '{item['Name']}': {source_path}")
             continue
 
         # Create the symlink path in the output library
-        symlink_path = Path(library_path) / f"{movie['Name']}.lnk"
+        symlink_path = Path(library_path) / f"{item['Name']}.lnk"
         new_symlinks.add(symlink_path)
 
         # Create or update the symlink if it doesn't exist
@@ -74,37 +78,41 @@ def create_symlinks(movies, library_path):
             if symlink_path.exists():
                 symlink_path.unlink()  # Remove outdated symlink
             os.symlink(source_path, symlink_path)
-            print(f"Created symlink: {symlink_path} -> {source_path}")
+            print(f"Created symlink for {item_type}: {symlink_path} -> {source_path}")
 
     # Remove outdated symlinks
     for symlink in existing_symlinks - new_symlinks:
         symlink.unlink()
-        print(f"Removed outdated symlink: {symlink}")
+        print(f"Removed outdated symlink for {item_type}: {symlink}")
 
-# Main function to update the library
-def update_library():
+# Main function to update the library for Movies or TV Shows
+def update_library(collection_name, library_path, item_type):
     """
     Fetches the collection from Emby and updates the symlink library.
     """
     try:
-        print("Fetching collection ID...")
-        collection_id = get_collection_id(COLLECTION_NAME)
-        print(f"Collection ID for '{COLLECTION_NAME}': {collection_id}")
+        print(f"Fetching collection ID for {item_type}...")
+        collection_id = get_collection_id(collection_name)
+        print(f"Collection ID for '{collection_name}': {collection_id}")
 
-        print("Fetching collection items...")
-        movies = get_collection_movies(collection_id)
-        print(f"Found {len(movies)} items in the collection")
+        print(f"Fetching {item_type} items in the collection...")
+        items = get_collection_items(collection_id)
+        print(f"Found {len(items)} {item_type}(s) in the collection")
 
-        print("Creating symlinks...")
-        create_symlinks(movies, SYMLINK_LIBRARY_PATH)
-        print("Symlink library update complete.")
+        print(f"Creating symlinks for {item_type}...")
+        create_symlinks(items, library_path, item_type)
+        print(f"Symlink library update for {item_type} complete.")
     except Exception as e:
-        print(f"Error updating library: {e}")
+        print(f"Error updating {item_type} library: {e}")
 
-# Scheduler to run the update every 6 hours
+# Scheduler to run the update for both Movies and TV Shows every 6 hours
 if __name__ == "__main__":
     while True:
-        print("Starting library update...")
-        update_library()
+        print("Starting library update for Movies...")
+        update_library(MOVIE_COLLECTION_NAME, SYMLINK_LIBRARY_PATH_MOVIES, "Movie")
+
+        print("Starting library update for TV Shows...")
+        update_library(TV_COLLECTION_NAME, SYMLINK_LIBRARY_PATH_TV_SHOWS, "TV Show")
+
         print("Library update complete. Waiting for 6 hours...")
         time.sleep(6 * 60 * 60)  # Wait for 6 hours before refreshing
