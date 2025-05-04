@@ -1,7 +1,18 @@
 import os
 import requests
 import time
+import logging
 from pathlib import Path
+
+# Configure logging to output to stdout
+logging.basicConfig(
+    level=logging.INFO,  # Set to logging.DEBUG for more verbosity
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()]  # Logs will go to stdout
+)
+
+# Logger instance
+logger = logging.getLogger(__name__)
 
 # Emby API configuration
 EMBY_URL = "http://nebula:8096"  # Replace with your Emby server address
@@ -61,13 +72,13 @@ def create_symlinks(items, library_path, item_type):
         # Get the source path of the item from the Emby library
         source_path = item.get("Path")
         if not source_path:
-            print(f"Skipping {item_type} '{item['Name']}' as it has no valid path in Emby")
+            logger.warning(f"Skipping {item_type} '{item['Name']}' as it has no valid path in Emby")
             continue
 
         # Adjust the source path based on Docker volume mapping
         source_path = source_path.replace(MEDIA_LIBRARY_PATH, "/opt/emby-collection-to-library/library")
         if not os.path.exists(source_path):
-            print(f"Warning: Source path does not exist for {item_type} '{item['Name']}': {source_path}")
+            logger.warning(f"Source path does not exist for {item_type} '{item['Name']}': {source_path}")
             continue
 
         # Create the symlink path in the output library
@@ -79,12 +90,12 @@ def create_symlinks(items, library_path, item_type):
             if symlink_path.exists():
                 symlink_path.unlink()  # Remove outdated symlink
             os.symlink(source_path, symlink_path)
-            print(f"Created symlink for {item_type}: {symlink_path} -> {source_path}")
+            logger.info(f"Created symlink for {item_type}: {symlink_path} -> {source_path}")
 
     # Remove outdated symlinks
     for symlink in existing_symlinks - new_symlinks:
         symlink.unlink()
-        print(f"Removed outdated symlink for {item_type}: {symlink}")
+        logger.info(f"Removed outdated symlink for {item_type}: {symlink}")
 
 # Main function to update the library for Movies or TV Shows
 def update_library(collection_name, library_path, item_type):
@@ -92,28 +103,28 @@ def update_library(collection_name, library_path, item_type):
     Fetches the collection from Emby and updates the symlink library.
     """
     try:
-        print(f"Fetching collection ID for {item_type}...")
+        logger.info(f"Fetching collection ID for {item_type}...")
         collection_id = get_collection_id(collection_name)
-        print(f"Collection ID for '{collection_name}': {collection_id}")
+        logger.info(f"Collection ID for '{collection_name}': {collection_id}")
 
-        print(f"Fetching {item_type} items in the collection...")
+        logger.info(f"Fetching {item_type} items in the collection...")
         items = get_collection_items(collection_id)
-        print(f"Found {len(items)} {item_type}(s) in the collection")
+        logger.info(f"Found {len(items)} {item_type}(s) in the collection")
 
-        print(f"Creating symlinks for {item_type}...")
+        logger.info(f"Creating symlinks for {item_type}...")
         create_symlinks(items, library_path, item_type)
-        print(f"Symlink library update for {item_type} complete.")
+        logger.info(f"Symlink library update for {item_type} complete.")
     except Exception as e:
-        print(f"Error updating {item_type} library: {e}")
+        logger.error(f"Error updating {item_type} library: {e}")
 
 # Scheduler to run the update for both Movies and TV Shows every 6 hours
 if __name__ == "__main__":
     while True:
-        print("Starting library update for Movies...")
+        logger.info("Starting library update for Movies...")
         update_library(MOVIE_COLLECTION_NAME, SYMLINK_LIBRARY_PATH_MOVIES, "Movie")
 
-        print("Starting library update for TV Shows...")
+        logger.info("Starting library update for TV Shows...")
         update_library(TV_COLLECTION_NAME, SYMLINK_LIBRARY_PATH_TV_SHOWS, "TV Show")
 
-        print("Library update complete. Waiting for 6 hours...")
+        logger.info("Library update complete. Waiting for 6 hours...")
         time.sleep(6 * 60 * 60)  # Wait for 6 hours before refreshing
