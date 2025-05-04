@@ -43,20 +43,26 @@ def get_collection_items(collection_id):
     
     return response.json().get("Items", [])
 
-# Function to fetch the detailed metadata for an item using its ID
-def get_item_details(item_id):
+# Function to fetch playback info for an item using its ID
+def get_item_playback_info(item_id):
     """
-    Fetch detailed information about an item, including its Path.
+    Fetch playback information for an item, including its Path.
     """
     response = requests.get(
-        f"{EMBY_URL}/emby/Items/{item_id}",
+        f"{EMBY_URL}/emby/Items/{item_id}/PlaybackInfo",
         params={"api_key": API_KEY},
     )
-    if response.status_code != 200:
-        logger.error(f"Error fetching details for item {item_id}: {response.status_code} - {response.text}")
+    if response.status_code == 404:
+        logger.warning(f"Playback info for item with ID {item_id} not found. Skipping.")
+        return None
+    elif response.status_code != 200:
+        logger.error(f"Error fetching playback info for item {item_id}: {response.status_code} - {response.text}")
         return None
 
-    return response.json()
+    playback_info = response.json()
+    if "MediaSources" in playback_info and len(playback_info["MediaSources"]) > 0:
+        return playback_info["MediaSources"][0].get("Path")
+    return None
 
 # Function to create symlinks for collection items
 def create_symlinks(items, library_path, item_type):
@@ -68,12 +74,11 @@ def create_symlinks(items, library_path, item_type):
     new_symlinks = set()
 
     for item in items:
-        item_details = get_item_details(item["Id"])
-        if not item_details or "Path" not in item_details:
-            logger.warning(f"Skipping {item_type} '{item['Name']}' as it has no valid path in Emby.")
+        source_path = get_item_playback_info(item["Id"])
+        if not source_path:
+            logger.warning(f"Skipping {item_type} '{item['Name']}' as it has no valid playback path in Emby.")
             continue
 
-        source_path = item_details["Path"]
         if not os.path.exists(source_path):
             logger.warning(f"Source path does not exist for {item_type} '{item['Name']}': {source_path}")
             continue
