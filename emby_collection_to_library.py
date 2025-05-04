@@ -18,95 +18,70 @@ logger = logging.getLogger(__name__)
 EMBY_URL = "http://nebula:8096"  # Replace with your Emby server address
 API_KEY = "9c577d54a38e477880c294f7208c22c4"  # Replace with your Emby API key
 
-# Collection names
-MOVIE_COLLECTION_NAME = "Trending Movies"  # Name of the collection for Movies
-TV_COLLECTION_NAME = "Trending TV Shows"  # Name of the collection for TV Shows
+# Collection IDs (replace with actual IDs)
+MOVIE_COLLECTION_ID = "2421687"  # Replace with the Collection_ID for Movies
+TV_COLLECTION_ID = "2421686"  # Replace with the Collection_ID for TV Shows
 
-# Main working directory
+# Paths for symlinks
 BASE_PATH = "/opt/emby-collection-to-library"
+MEDIA_LIBRARY_PATH = f"{BASE_PATH}/library"
+SYMLINK_LIBRARY_PATH_MOVIES = f"{BASE_PATH}/output/movies"
+SYMLINK_LIBRARY_PATH_TV_SHOWS = f"{BASE_PATH}/output/tvshows"
 
-# Paths for media files and symlinks
-MEDIA_LIBRARY_PATH = f"{BASE_PATH}/library"  # Media files mapped via Docker
-SYMLINK_LIBRARY_PATH_MOVIES = f"{BASE_PATH}/output/movies"  # Symlinks for Movies
-SYMLINK_LIBRARY_PATH_TV_SHOWS = f"{BASE_PATH}/output/tvshows"  # Symlinks for TV Shows
-
-# Function to get the collection ID by name
-def get_collection_id(collection_name):
-    """
-    Fetch the collection ID from Emby by its name.
-    """
-    response = requests.get(
-        f"{EMBY_URL}/emby/Collections",
-        params={"api_key": API_KEY},
-    )
-    response.raise_for_status()
-    collections = response.json().get("Items", [])
-    for collection in collections:
-        if collection["Name"].lower() == collection_name.lower():
-            return collection["Id"]
-    raise ValueError(f"Collection '{collection_name}' not found")
-
-# Function to get items in the collection
+# Function to fetch items in a collection using Collection_ID
 def get_collection_items(collection_id):
     """
-    Fetch all items in the specified collection.
+    Fetch all items in the specified collection by Collection_ID.
     """
     response = requests.get(
-        f"{EMBY_URL}/emby/Collections/{collection_id}/Items",
-        params={"api_key": API_KEY},
+        f"{EMBY_URL}/emby/Items",
+        params={"api_key": API_KEY, "ParentId": collection_id},
     )
-    response.raise_for_status()
+    if response.status_code != 200:
+        logger.error(f"Error fetching items for collection {collection_id}: {response.status_code} - {response.text}")
+        raise ValueError(f"Failed to fetch items for collection ID {collection_id}.")
+    
     return response.json().get("Items", [])
 
-# Function to create symlinks for Movies or TV Shows
+# Function to create symlinks for collection items
 def create_symlinks(items, library_path, item_type):
     """
     Create symbolic links for all items in the collection.
-    Removes outdated symlinks and creates new ones as needed.
     """
-    os.makedirs(library_path, exist_ok=True)  # Ensure library directory exists
-    existing_symlinks = set(Path(library_path).iterdir())  # Track existing symlinks
+    os.makedirs(library_path, exist_ok=True)
+    existing_symlinks = set(Path(library_path).iterdir())
     new_symlinks = set()
 
     for item in items:
-        # Get the source path of the item from the Emby library
         source_path = item.get("Path")
         if not source_path:
-            logger.warning(f"Skipping {item_type} '{item['Name']}' as it has no valid path in Emby")
+            logger.warning(f"Skipping {item_type} '{item['Name']}' as it has no valid path in Emby.")
             continue
 
-        # Adjust the source path based on Docker volume mapping
         source_path = source_path.replace(MEDIA_LIBRARY_PATH, "/opt/emby-collection-to-library/library")
         if not os.path.exists(source_path):
             logger.warning(f"Source path does not exist for {item_type} '{item['Name']}': {source_path}")
             continue
 
-        # Create the symlink path in the output library
         symlink_path = Path(library_path) / f"{item['Name']}.lnk"
         new_symlinks.add(symlink_path)
 
-        # Create or update the symlink if it doesn't exist
         if not symlink_path.exists() or symlink_path.resolve() != Path(source_path).resolve():
             if symlink_path.exists():
-                symlink_path.unlink()  # Remove outdated symlink
+                symlink_path.unlink()
             os.symlink(source_path, symlink_path)
             logger.info(f"Created symlink for {item_type}: {symlink_path} -> {source_path}")
 
-    # Remove outdated symlinks
     for symlink in existing_symlinks - new_symlinks:
         symlink.unlink()
         logger.info(f"Removed outdated symlink for {item_type}: {symlink}")
 
-# Main function to update the library for Movies or TV Shows
-def update_library(collection_name, library_path, item_type):
+# Function to update the library for Movies or TV Shows
+def update_library(collection_id, library_path, item_type):
     """
     Fetches the collection from Emby and updates the symlink library.
     """
     try:
-        logger.info(f"Fetching collection ID for {item_type}...")
-        collection_id = get_collection_id(collection_name)
-        logger.info(f"Collection ID for '{collection_name}': {collection_id}")
-
         logger.info(f"Fetching {item_type} items in the collection...")
         items = get_collection_items(collection_id)
         logger.info(f"Found {len(items)} {item_type}(s) in the collection")
@@ -117,14 +92,14 @@ def update_library(collection_name, library_path, item_type):
     except Exception as e:
         logger.error(f"Error updating {item_type} library: {e}")
 
-# Scheduler to run the update for both Movies and TV Shows every 6 hours
+# Scheduler to run the updates every 6 hours
 if __name__ == "__main__":
     while True:
         logger.info("Starting library update for Movies...")
-        update_library(MOVIE_COLLECTION_NAME, SYMLINK_LIBRARY_PATH_MOVIES, "Movie")
+        update_library(MOVIE_COLLECTION_ID, SYMLINK_LIBRARY_PATH_MOVIES, "Movie")
 
         logger.info("Starting library update for TV Shows...")
-        update_library(TV_COLLECTION_NAME, SYMLINK_LIBRARY_PATH_TV_SHOWS, "TV Show")
+        update_library(TV_COLLECTION_ID, SYMLINK_LIBRARY_PATH_TV_SHOWS, "TV Show")
 
         logger.info("Library update complete. Waiting for 6 hours...")
         time.sleep(6 * 60 * 60)  # Wait for 6 hours before refreshing
