@@ -43,53 +43,19 @@ def map_emby_path(emby_path):
     return emby_path  # Return the original path if no mapping is found
 
 # Function to fetch items in a collection using Collection_ID
-def get_collection_items(collection_id):
+def get_collection_items(collection_id, item_type=None):
     """
     Fetch all items in the specified collection by Collection_ID.
+    Optionally filter by item type (e.g., Episode, Movie).
     """
-    response = requests.get(
-        f"{EMBY_URL}/emby/Items",
-        params={"api_key": API_KEY, "ParentId": collection_id},
-    )
+    params = {"api_key": API_KEY, "ParentId": collection_id, "Recursive": True}
+    if item_type:
+        params["IncludeItemTypes"] = item_type
+
+    response = requests.get(f"{EMBY_URL}/emby/Items", params=params)
     if response.status_code != 200:
         logger.error(f"Error fetching items for collection {collection_id}: {response.status_code} - {response.text}")
         raise ValueError(f"Failed to fetch items for collection ID {collection_id}.")
-    
-    return response.json().get("Items", [])
-
-# Function to fetch playback info for an item using its ID
-def get_item_playback_info(item_id):
-    """
-    Fetch playback information for an item, including its Path.
-    """
-    response = requests.get(
-        f"{EMBY_URL}/emby/Items/{item_id}/PlaybackInfo",
-        params={"api_key": API_KEY},
-    )
-    if response.status_code == 404:
-        logger.warning(f"Playback info for item with ID {item_id} not found. Skipping.")
-        return None
-    elif response.status_code != 200:
-        logger.error(f"Error fetching playback info for item {item_id}: {response.status_code} - {response.text}")
-        return None
-
-    playback_info = response.json()
-    if "MediaSources" in playback_info and len(playback_info["MediaSources"]) > 0:
-        return playback_info["MediaSources"][0].get("Path")
-    return None
-
-# Function to fetch child items (e.g., episodes)
-def get_child_items(parent_id):
-    """
-    Fetch all child items (e.g., episodes) for a parent item (e.g., series or season).
-    """
-    response = requests.get(
-        f"{EMBY_URL}/emby/Items/{parent_id}/Children",
-        params={"api_key": API_KEY},
-    )
-    if response.status_code != 200:
-        logger.error(f"Error fetching child items for parent ID {parent_id}: {response.status_code} - {response.text}")
-        return []
     
     return response.json().get("Items", [])
 
@@ -103,15 +69,7 @@ def create_symlinks(items, library_path, item_type):
     new_symlinks = set()
 
     for item in items:
-        # If the item is a TV series or season, fetch its episodes
-        if item["Type"] in ["Series", "Season"]:
-            logger.info(f"Fetching episodes for {item_type} '{item['Name']}'...")
-            child_items = get_child_items(item["Id"])
-            create_symlinks(child_items, library_path, "Episode")  # Recursively handle episodes
-            continue
-
-        # Fetch playback info for the item
-        source_path = get_item_playback_info(item["Id"])
+        source_path = item.get("Path")
         if not source_path:
             logger.warning(f"Skipping {item_type} '{item['Name']}' as it has no valid playback path in Emby.")
             continue
@@ -125,7 +83,14 @@ def create_symlinks(items, library_path, item_type):
             logger.warning(f"Source path does not exist for {item_type} '{item['Name']}': {source_path}")
             continue
 
-        symlink_path = Path(library_path) / f"{item['Name']}.lnk"
+        # Create symlink with Series and Season structure for TV shows
+        if item_type == "Episode":
+            symlink_dir = Path(library_path) / item.get("SeriesName", "Unknown Series") / item.get("SeasonName", "Unknown Season")
+            symlink_dir.mkdir(parents=True, exist_ok=True)
+            symlink_path = symlink_dir / f"{item['Name']}.lnk"
+        else:
+            symlink_path = Path(library_path) / f"{item['Name']}.lnk"
+
         new_symlinks.add(symlink_path)
 
         if not symlink_path.exists() or symlink_path.resolve() != Path(source_path).resolve():
@@ -145,7 +110,7 @@ def update_library(collection_id, library_path, item_type):
     """
     try:
         logger.info(f"Fetching {item_type} items in the collection...")
-        items = get_collection_items(collection_id)
+        items = get_collection_items(collection_id, "Episode" if item_type == "TV Show" else None)
         logger.info(f"Found {len(items)} {item_type}(s) in the collection")
 
         logger.info(f"Creating symlinks for {item_type}...")
