@@ -4,12 +4,12 @@ import time
 from pathlib import Path
 
 # Emby API configuration
-EMBY_URL = "http://your-emby-server-address"  # Replace with your Emby server address
-API_KEY = "your-api-key"  # Replace with your Emby API key
+EMBY_URL = "http://nebula:8096"  # Replace with your Emby server address
+API_KEY = "9c577d54a38e477880c294f7208c22c4"  # Replace with your Emby API key
 
 # Collection names
-MOVIE_COLLECTION_NAME = "trending_movies"  # Name of the collection for Movies
-TV_COLLECTION_NAME = "trending_tvshows"  # Name of the collection for TV Shows
+MOVIE_COLLECTION_NAME = "Trending Movies"  # Name of the collection for Movies
+TV_COLLECTION_NAME = "Trending TV Shows"  # Name of the collection for TV Shows
 
 # Main working directory
 BASE_PATH = "/opt/emby-collection-to-library"
