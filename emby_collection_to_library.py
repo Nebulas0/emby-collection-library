@@ -11,12 +11,13 @@ API_KEY = "your-api-key"  # Replace with your Emby API key
 MOVIE_COLLECTION_NAME = "trending_movies"  # Name of the collection for Movies
 TV_COLLECTION_NAME = "trending_tvshows"  # Name of the collection for TV Shows
 
-# Output paths for symlinks
-SYMLINK_LIBRARY_PATH_MOVIES = "/output/library/movies"  # Path where symlinks for Movies will be created
-SYMLINK_LIBRARY_PATH_TV_SHOWS = "/output/library/tvshows"  # Path where symlinks for TV Shows will be created
+# Main working directory
+BASE_PATH = "/opt/emby-collection-to-library"
 
-# Emby library base path inside the container (mapped via Docker volume)
-EMBY_LIBRARY_PATH = "/emby/library"  # Path to the Emby library inside the container
+# Paths for media files and symlinks
+MEDIA_LIBRARY_PATH = f"{BASE_PATH}/library"  # Media files mapped via Docker
+SYMLINK_LIBRARY_PATH_MOVIES = f"{BASE_PATH}/output/movies"  # Symlinks for Movies
+SYMLINK_LIBRARY_PATH_TV_SHOWS = f"{BASE_PATH}/output/tvshows"  # Symlinks for TV Shows
 
 # Function to get the collection ID by name
 def get_collection_id(collection_name):
@@ -64,7 +65,7 @@ def create_symlinks(items, library_path, item_type):
             continue
 
         # Adjust the source path based on Docker volume mapping
-        source_path = source_path.replace(EMBY_LIBRARY_PATH, "/emby/library")
+        source_path = source_path.replace(MEDIA_LIBRARY_PATH, "/opt/emby-collection-to-library/library")
         if not os.path.exists(source_path):
             print(f"Warning: Source path does not exist for {item_type} '{item['Name']}': {source_path}")
             continue
