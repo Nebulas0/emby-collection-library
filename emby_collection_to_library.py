@@ -78,6 +78,21 @@ def get_item_playback_info(item_id):
         return playback_info["MediaSources"][0].get("Path")
     return None
 
+# Function to fetch child items (e.g., episodes)
+def get_child_items(parent_id):
+    """
+    Fetch all child items (e.g., episodes) for a parent item (e.g., series or season).
+    """
+    response = requests.get(
+        f"{EMBY_URL}/emby/Items/{parent_id}/Children",
+        params={"api_key": API_KEY},
+    )
+    if response.status_code != 200:
+        logger.error(f"Error fetching child items for parent ID {parent_id}: {response.status_code} - {response.text}")
+        return []
+    
+    return response.json().get("Items", [])
+
 # Function to create symlinks for collection items
 def create_symlinks(items, library_path, item_type):
     """
@@ -88,6 +103,14 @@ def create_symlinks(items, library_path, item_type):
     new_symlinks = set()
 
     for item in items:
+        # If the item is a TV series or season, fetch its episodes
+        if item["Type"] in ["Series", "Season"]:
+            logger.info(f"Fetching episodes for {item_type} '{item['Name']}'...")
+            child_items = get_child_items(item["Id"])
+            create_symlinks(child_items, library_path, "Episode")  # Recursively handle episodes
+            continue
+
+        # Fetch playback info for the item
         source_path = get_item_playback_info(item["Id"])
         if not source_path:
             logger.warning(f"Skipping {item_type} '{item['Name']}' as it has no valid playback path in Emby.")
