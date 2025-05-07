@@ -3,6 +3,7 @@ import requests
 import time
 import logging
 from pathlib import Path
+import re  # Import regex for name sanitization
 
 # Configure logging to output to stdout
 logging.basicConfig(
@@ -33,6 +34,16 @@ PATH_MAPPING = {
     "/mnt/unionfs": "/mnt/unionfs"  # Ensure local and Emby paths match
 }
 
+def sanitize_name(name):
+    """
+    Sanitize the name of an item to remove or replace special characters
+    that might cause issues during symlink creation.
+    """
+    # Replace special characters with underscores or remove them
+    sanitized = re.sub(r'[^\w\s\(\)\{\}\-]', '_', name)  # Replace non-alphanumeric except for spaces, (), {}, and -
+    sanitized = sanitized.strip()  # Remove leading/trailing whitespace
+    return sanitized
+
 def map_emby_path(emby_path):
     """
     Map Emby's path to the local system path using the PATH_MAPPING table.
@@ -57,7 +68,25 @@ def get_collection_items(collection_id):
     
     return response.json().get("Items", [])
 
-# Function to fetch all episodes for the TV show collection
+# Function to fetch playback info for a movie or episode
+def get_playback_path(item_id):
+    """
+    Fetch playback information for a given item ID and return the path.
+    """
+    response = requests.get(
+        f"{EMBY_URL}/emby/Items/{item_id}/PlaybackInfo",
+        params={"api_key": API_KEY},
+    )
+    if response.status_code != 200:
+        logger.error(f"Error fetching playback info for item ID {item_id}: {response.status_code} - {response.text}")
+        return None
+
+    playback_info = response.json()
+    if "MediaSources" in playback_info and len(playback_info["MediaSources"]) > 0:
+        return playback_info["MediaSources"][0].get("Path")
+    return None
+
+# Function to fetch the first episode ID for a TV show
 def get_first_episode_id(collection_id):
     """
     Fetch all episodes for TV shows within the specified collection and return the first episode ID.
@@ -81,24 +110,6 @@ def get_first_episode_id(collection_id):
         return None
     
     return episodes[0]["Id"]  # Return the first episode ID
-
-# Function to fetch playback info for a movie or episode
-def get_playback_path(item_id):
-    """
-    Fetch playback information for a given item ID and return the path.
-    """
-    response = requests.get(
-        f"{EMBY_URL}/emby/Items/{item_id}/PlaybackInfo",
-        params={"api_key": API_KEY},
-    )
-    if response.status_code != 200:
-        logger.error(f"Error fetching playback info for item ID {item_id}: {response.status_code} - {response.text}")
-        return None
-
-    playback_info = response.json()
-    if "MediaSources" in playback_info and len(playback_info["MediaSources"]) > 0:
-        return playback_info["MediaSources"][0].get("Path")
-    return None
 
 # Function to create symlinks for Movies or TV Shows
 def create_symlinks(items, library_path, item_type):
@@ -138,7 +149,9 @@ def create_symlinks(items, library_path, item_type):
             logger.warning(f"Source path does not exist for {item_type} '{item['Name']}': {source_path}")
             continue
 
-        symlink_path = Path(library_path) / f"{item['Name']}.lnk"
+        # Sanitize the name for the symlink
+        symlink_name = sanitize_name(item["Name"])
+        symlink_path = Path(library_path) / f"{symlink_name}.lnk"
         new_symlinks.add(symlink_path)
 
         if not symlink_path.exists() or symlink_path.resolve() != Path(source_path).resolve():
