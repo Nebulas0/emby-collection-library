@@ -42,7 +42,7 @@ def map_emby_path(emby_path):
             return emby_path.replace(emby_base, local_base, 1)
     return emby_path  # Return the original path if no mapping is found
 
-# Function to fetch items in a collection using Collection_ID (for Movies)
+# Function to fetch items in a collection using Collection_ID (for Movies or TV Shows)
 def get_collection_items(collection_id):
     """
     Fetch all items in the specified collection by Collection_ID.
@@ -56,6 +56,31 @@ def get_collection_items(collection_id):
         raise ValueError(f"Failed to fetch items for collection ID {collection_id}.")
     
     return response.json().get("Items", [])
+
+# Function to fetch all episodes for the TV show collection
+def get_first_episode_id(collection_id):
+    """
+    Fetch all episodes for TV shows within the specified collection and return the first episode ID.
+    """
+    response = requests.get(
+        f"{EMBY_URL}/emby/Items",
+        params={
+            "api_key": API_KEY,
+            "ParentId": collection_id,
+            "IncludeItemTypes": "Episode",
+            "Recursive": True
+        },
+    )
+    if response.status_code != 200:
+        logger.error(f"Error fetching episodes for collection ID {collection_id}: {response.status_code} - {response.text}")
+        raise ValueError(f"Failed to fetch episodes for collection ID {collection_id}.")
+    
+    episodes = response.json().get("Items", [])
+    if not episodes:
+        logger.warning(f"No episodes found for TV show collection ID {collection_id}.")
+        return None
+    
+    return episodes[0]["Id"]  # Return the first episode ID
 
 # Function to fetch playback info for a movie or episode
 def get_playback_path(item_id):
@@ -86,9 +111,14 @@ def create_symlinks(items, library_path, item_type):
 
     for item in items:
         if item_type == "TV Show":
-            # For TV shows, get the first episode ID and use it to fetch the show path
-            episode_id = item["Id"]
-            source_path = get_playback_path(episode_id)
+            # Fetch the first episode for the TV show
+            first_episode_id = get_first_episode_id(item["Id"])
+            if not first_episode_id:
+                logger.warning(f"Skipping TV Show '{item['Name']}' as it has no episodes.")
+                continue
+
+            # Fetch playback path for the first episode
+            source_path = get_playback_path(first_episode_id)
             if not source_path:
                 logger.warning(f"Skipping TV Show '{item['Name']}' as it has no valid playback path in Emby.")
                 continue
