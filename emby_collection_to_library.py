@@ -143,6 +143,9 @@ def create_symlinks(items, library_path, item_type):
             if not source_path:
                 logger.warning(f"Skipping Movie '{item['Name']}' as it has no valid playback path in Emby.")
                 continue
+            
+            # Adjust the path to point to the folder (remove the filename)
+            source_path = "/".join(source_path.split("/")[:-1]) + "/"
             source_path = map_emby_path(source_path)
 
         if not os.path.exists(source_path):
