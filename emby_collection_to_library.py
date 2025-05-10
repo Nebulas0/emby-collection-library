@@ -16,8 +16,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Emby API configuration
-EMBY_URL = "http://nebula:8096"  # Replace with your Emby server address
-API_KEY = "9c577d54a38e477880c294f7208c22c4"  # Replace with your Emby API key
+EMBY_URL = "http://emby:8096"  # Replace with your Emby server address
+API_KEY = "MY_API_CODE"  # Replace with your Emby API key
 
 # Collection IDs (replace with actual IDs)
 MOVIE_COLLECTION_ID = "2421687"  # Replace with the Collection_ID for Movies
